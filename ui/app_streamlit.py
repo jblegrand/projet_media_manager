@@ -13,7 +13,22 @@ def select_folder(title):
     return folder_path
 
 # Configuration de la page
-st.set_page_config(page_title="Gestionnaire de Médias", page_icon="🚁", layout="centered")
+st.set_page_config(page_title="Gestionnaire de Médias", page_icon="🚁", layout="wide")
+
+# Personnalisation du style CSS pour ajuster la disposition
+st.markdown("""
+    <style>
+    /* Ajustement des marges et de la largeur maximale de l'application */
+    .block-container {
+        max-width: 1200px !important;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        margin-left: 0 !important; /* Aligne le contenu à gauche sur les grands écrans */
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("🚁 Gestionnaire de Médias & Tri Sécurisé")
 st.write("Bienvenue dans votre interface de tri modulaire.")
