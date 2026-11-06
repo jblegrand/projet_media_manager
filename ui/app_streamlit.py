@@ -1,6 +1,7 @@
 import streamlit as st
 import tkinter as tk
 from tkinter import filedialog
+import os
 
 def select_folder(title):
     """Ouvre une boîte de dialogue Windows pour sélectionner un dossier"""
@@ -17,48 +18,93 @@ st.set_page_config(page_title="Gestionnaire de Médias", page_icon="🚁", layou
 st.title("🚁 Gestionnaire de Médias & Tri Sécurisé")
 st.write("Bienvenue dans votre interface de tri modulaire.")
 
-# --- Initialisation des chemins dans la session ---
-if "source_val" not in st.session_state:
-    st.session_state.source_val = ""
-if "dest_val" not in st.session_state:
-    st.session_state.dest_val = ""
+# --- Initialisation de l'état de session ---
+if "sources_list" not in st.session_state:
+    st.session_state.sources_list = []
+if "dest_list" not in st.session_state:
+    st.session_state.dest_list = []  # Limité à un seul élément
 
 st.header("1. Paramètres de saisie")
 
-# --- Dossier Source ---
-col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
-with col1:
-    # On récupère la valeur depuis la session
-    source_dir = st.text_input("Dossier Source (ex: Carte SD Drone)", value=st.session_state.source_val)
-    if source_dir != st.session_state.source_val:
-        st.session_state.source_val = source_dir
-with col2:
-    if st.button("📁 Parcourir", key="btn_src", use_container_width=True):
-        chosen_dir = select_folder("Sélectionner le dossier source")
-        if chosen_dir:
-            st.session_state.source_val = chosen_dir
+# --- Dossiers Sources (Multiples) ---
+st.subheader("Dossiers Sources (Cartes SD / Répertoires)")
+
+if st.button("➕ Ajouter un dossier source", key="btn_add_src"):
+    chosen_dir = select_folder("Sélectionner un dossier source")
+    if chosen_dir:
+        norm_chosen = os.path.normpath(chosen_dir)
+        # Vérification si le dossier est déjà la destination
+        is_dest = any(os.path.normpath(d) == norm_chosen for d in st.session_state.dest_list)
+        if is_dest:
+            st.error("Ce dossier ne peut pas être une source car il est déjà défini comme destination.")
+        elif norm_chosen not in [os.path.normpath(s) for s in st.session_state.sources_list]:
+            st.session_state.sources_list.append(chosen_dir)
             st.rerun()
 
-# --- Dossier Destination ---
-col3, col4 = st.columns([4, 1], vertical_alignment="bottom")
-with col3:
-    dest_dir = st.text_input("Dossier de Destination (Cible)", value=st.session_state.dest_val)
-    if dest_dir != st.session_state.dest_val:
-        st.session_state.dest_val = dest_dir
-with col4:
-    if st.button("📁 Parcourir", key="btn_dst", use_container_width=True):
-        chosen_dir = select_folder("Sélectionner le dossier de destination")
-        if chosen_dir:
-            st.session_state.dest_val = chosen_dir
+# Affichage de la liste des sources
+if st.session_state.sources_list:
+    for idx, src in enumerate(st.session_state.sources_list):
+        cols = st.columns([6, 1])
+        with cols[0]:
+            st.text(f"📁 {src}")
+        with cols[1]:
+            if st.button("❌", key=f"del_src_{idx}"):
+                st.session_state.sources_list.pop(idx)
+                st.rerun()
+else:
+    st.info("Aucun dossier source sélectionné pour le moment.")
+
+st.markdown("---")
+
+# --- Dossier de Destination (Unique, même ergonomie avec bouton grisé) ---
+st.subheader("Dossier de Destination (Cible unique)")
+
+# Le bouton est désactivé s'il y a déjà un dossier de destination
+has_dest = len(st.session_state.dest_list) > 0
+
+if st.button("➕ Ajouter un dossier destination", key="btn_add_dest", disabled=has_dest):
+    chosen_dir = select_folder("Sélectionner le dossier de destination")
+    if chosen_dir:
+        norm_chosen = os.path.normpath(chosen_dir)
+        # Vérification si le dossier est déjà dans les sources
+        is_source = any(os.path.normpath(s) == norm_chosen for s in st.session_state.sources_list)
+        if is_source:
+            st.error("Le dossier de destination ne peut pas être l'un des dossiers sources.")
+        else:
+            st.session_state.dest_list = [chosen_dir]
             st.rerun()
 
-st.write("")
+# Affichage de la destination sélectionnée avec option de suppression
+if st.session_state.dest_list:
+    for idx, dst in enumerate(st.session_state.dest_list):
+        cols = st.columns([6, 1])
+        with cols[0]:
+            st.text(f"📁 {dst}")
+        with cols[1]:
+            if st.button("❌", key=f"del_dest_{idx}"):
+                st.session_state.dest_list.pop(idx)
+                st.rerun()
+else:
+    st.info("Aucun dossier de destination sélectionné pour le moment.")
 
-# Bouton de simulation
+st.markdown("---")
+
+# --- Bouton de simulation ---
 if st.button("Lancer la simulation (Dry-Run)", type="primary"):
-    if st.session_state.source_val and st.session_state.dest_val:
-        st.success("Simulation lancée avec succès !")
-        st.write(f"**Source :** {st.session_state.source_val}")
-        st.write(f"**Destination :** {st.session_state.dest_val}")
+    if not st.session_state.sources_list:
+        st.warning("Veuillez renseigner au moins un dossier source.")
+    elif not st.session_state.dest_list:
+        st.warning("Veuillez renseigner le dossier de destination.")
     else:
-        st.warning("Veuillez renseigner à la fois le dossier source et le dossier de destination.")
+        dest = st.session_state.dest_list[0]
+        norm_dest = os.path.normpath(dest)
+        conflict = any(os.path.normpath(s) == norm_dest for s in st.session_state.sources_list)
+        
+        if conflict:
+            st.error("❌ Erreur : Le dossier de destination ne peut pas être identique à l'un des dossiers sources.")
+        else:
+            st.success("Simulation lancée avec succès !")
+            st.write(f"**Sources à traiter ({len(st.session_state.sources_list)}) :**")
+            for s in st.session_state.sources_list:
+                st.write(f"- {s}")
+            st.write(f"**Destination :** {dest}")
