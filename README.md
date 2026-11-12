@@ -20,3 +20,11 @@ Le projet suit une approche modulaire (type micro-services internes) pour sépar
 2. Installer les dépendances :
    ```powershell
    py -m pip install streamlit
+   ```
+3. Lancer l'interface web depuis le terminal intégré de VS Code :
+   - Assurez-vous d'être à la racine du projet (`projet_media_manager`).
+   - Exécutez la commande suivante :
+          ```powershell
+     py -m streamlit run ui/app_streamlit.py
+     ```
+   - Une fenêtre de navigateur s'ouvrira automatiquement à l'adresse `http://localhost:8501`.

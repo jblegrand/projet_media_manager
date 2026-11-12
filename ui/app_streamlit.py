@@ -2,6 +2,11 @@ import streamlit as st
 import tkinter as tk
 from tkinter import filedialog
 import os
+import sys
+
+# Ajout du dossier racine au PATH pour les imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from core.scanner import trouver_fichiers_dji
 
 def select_folder(title):
     """Ouvre une boîte de dialogue Windows pour sélectionner un dossier"""
@@ -119,7 +124,33 @@ if st.button("Lancer la simulation (Dry-Run)", type="primary"):
             st.error("❌ Erreur : Le dossier de destination ne peut pas être identique à l'un des dossiers sources.")
         else:
             st.success("Simulation lancée avec succès !")
-            st.write(f"**Sources à traiter ({len(st.session_state.sources_list)}) :**")
+            st.write(f"**Sources à analyser ({len(st.session_state.sources_list)}) :**")
             for s in st.session_state.sources_list:
                 st.write(f"- {s}")
             st.write(f"**Destination :** {dest}")
+            
+            st.markdown("---")
+            st.subheader("🔍 Analyse des fichiers en cours...")
+            
+            with st.spinner("⏳ Traitement en cours... Veuillez patienter pendant la recherche et le calcul des nouveaux noms."):
+                fichiers_dji = trouver_fichiers_dji(st.session_state.sources_list, dest)
+            
+            if not fichiers_dji:
+                st.info("Aucun fichier vidéo DJI (.mp4, .mov) trouvé dans les dossiers sources.")
+            else:
+                st.write(f"**{len(fichiers_dji)} fichiers DJI identifiés.**")
+                
+                # Affichage des fichiers trouvés sous forme de tableau complet sans ascenseur vertical si possible
+                data_affichage = []
+                for f in fichiers_dji:
+                    data_affichage.append({
+                        "Nom Original": f["nom_original"],
+                        "Date de Prise": f["date_prise_vue"].strftime("%d/%m/%Y %H:%M"),
+                        "Nouveau Nom": f["nouveau_nom"],
+                        "Dossier Cible": f["chemin_cible"],
+                        "Dossier Source": os.path.basename(f["dossier_source"])
+                    })
+                
+                # height configuré pour afficher tout le tableau sans scroller verticalement (environ 35px par ligne + 40px header)
+                hauteur_tableau = min(35 * len(data_affichage) + 40, 800)
+                st.dataframe(data_affichage, use_container_width=True, height=hauteur_tableau)
