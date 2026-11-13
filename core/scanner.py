@@ -71,12 +71,14 @@ def trouver_fichiers_dji(dossiers_sources: list[str], dossier_destination: str) 
                     nouveau_nom, chemin_cible = calculer_chemin_cible(chemin_dest, date_prise, chemin_fichier.suffix)
                     
                     fichiers_trouves.append({
+                        "selectionne": True,  # Case à cocher pour la sélection (par défaut True)
                         "chemin_complet": chemin_fichier,
                         "nom_original": nom_fichier,
                         "dossier_source": str(chemin_dossier),
                         "date_prise_vue": date_prise,
                         "nouveau_nom": nouveau_nom,
-                        "chemin_cible": str(chemin_cible)
+                        "chemin_cible": str(chemin_cible),
+                        "taille_go": chemin_fichier.stat().st_size / (1024 ** 3)  # On garde la précision totale dans le dictionnaire
                     })
                     
     return fichiers_trouves
