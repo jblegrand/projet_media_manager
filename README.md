@@ -4,12 +4,15 @@ Application modulaire en Python conçue pour trier, vérifier et organiser autom
 
 ## Fonctionnalités Principales
 
-- **Tri Intelligent :** Analyse automatique des répertoires sources pour isoler les vidéos DJI (`.mp4`, `.mov`).
-- **Nommage Automatisé :** Renommage automatique des fichiers en fonction de leur date de prise de vue (`DJI_YYYYMMDD_HHMM.ext`), avec gestion intelligente des doublons.
-- **Dry-Run & Sélection :** Simulation du traitement dans un tableau interactif permettant de sélectionner/désélectionner précisément les fichiers à traiter, avec calcul de la volumétrie (Go).
-- **Copie Sécurisée Anti-Crash :** Les fichiers lourds sont copiés par blocs pour éviter de saturer la RAM.
-- **Intégrité Garantie :** Calcul du hash SHA-256 à la volée sur la source et la destination pour garantir 100% d'intégrité avant de proposer toute suppression.
-- **Workflow en Deux Temps :** La copie est d'abord effectuée. La suppression des sources originales n'est proposée qu'après confirmation du succès et reste à la discrétion de l'utilisateur.
+- **Tri Intelligent & Anti-Doublon :** Analyse automatique des répertoires sources pour isoler les vidéos DJI (`.mp4`, `.mov`). Détection stricte des doublons à l'octet près.
+- **Nommage Automatisé :** Renommage automatique des fichiers en fonction de leur date de prise de vue (`DJI_YYYYMMDD_HHMM.ext`), avec gestion intelligente des conflits de noms (suffixe `_1`, `_2`).
+- **Dry-Run & Sélection :** Simulation du traitement dans un tableau interactif permettant de sélectionner/désélectionner précisément les fichiers à traiter, avec calcul de la volumétrie réelle. Les doublons sont mis en surbrillance (rouge pastel) et décochés par défaut.
+- **Copie Ultra-Sécurisée (Battle Tested) :** 
+  - *Pre-flight check* : Vérification de l'espace disque cible avant démarrage.
+  - *Opération Atomique* : Copie via des fichiers temporaires (`.part`) pour éviter la corruption en cas de coupure (arrachage de la carte SD).
+  - *RAM Safe* : Transfert par blocs de 10 Mo.
+- **Intégrité Garantie :** Calcul du hash SHA-256 à la volée sur la source et la destination pour garantir 100% d'intégrité.
+- **Workflow en Deux Temps & Nettoyage :** La copie est d'abord effectuée. Ensuite, l'utilisateur a le choix (via boutons explicites) de supprimer les fichiers sources originaux de sa carte SD, ou de nettoyer spécifiquement les doublons inutiles.
 
 ## Architecture du Projet
 
