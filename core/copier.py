@@ -1,6 +1,9 @@
 import hashlib
 import shutil
 from pathlib import Path
+from core.logger import get_logger
+
+logger = get_logger()
 
 def format_size(bytes_size):
     """Formate une taille en octets vers une unité lisible (Ko, Mo, Go)."""
@@ -32,7 +35,12 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
         # Marge de sécurité de 5% pour éviter de saturer le disque à l'octet près
         espace_requis = total_bytes_global * 1.05 
         if free_space < espace_requis:
-            raise ValueError(f"Espace disque insuffisant sur la destination. Requis: {format_size(espace_requis)}, Libre: {format_size(free_space)}.")
+            msg_err = f"Espace disque insuffisant sur la destination. Requis: {format_size(espace_requis)}, Libre: {format_size(free_space)}."
+            logger.error(msg_err)
+            raise ValueError(msg_err)
+
+    logger.info(f"--- DÉBUT DE LA COPIE SÉCURISÉE ---")
+    logger.info(f"Nombre de fichiers à copier : {len(fichiers_a_copier)} ({format_size(total_bytes_global)})")
 
     try:
         for f in fichiers_a_copier:
@@ -98,17 +106,24 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
             
             # --- 4. Validation et Renommage (Opération Atomique) ---
             if hash_source != hash_cible:
-                raise ValueError(f"Erreur d'intégrité critique pour {src.name}. Corruption pendant le transport.")
+                msg_err = f"Erreur d'intégrité critique pour {src.name}. Corruption pendant le transport."
+                logger.error(msg_err)
+                raise ValueError(msg_err)
             
             # Le fichier est 100% valide, on le renomme de .part vers .mp4
             # Cette opération est quasi-instantanée (renommage dans l'index du système de fichiers)
             dst_tmp.rename(dst)
             # On remplace la trace pour que le système ne supprime pas le bon fichier si une erreur arrive sur la boucle suivante
             fichiers_crees.remove(dst_tmp) 
+            
+            logger.info(f"SUCCÈS - Fichier copié : {src.name} -> {dst} (Hash: {hash_cible})")
+            
+        logger.info(f"--- FIN DE LA COPIE SÉCURISÉE (Toutes les opérations ont réussi) ---")
                 
     except BaseException as e:
         # En cas de crash (Arrachage SD, Erreur Streamlit, Bouton Annuler)
         # On supprime les fichiers ".part" incomplets qui traînent
+        logger.warning(f"Processus interrompu ou exception levée. Raison : {str(e)}")
         for f_cree in fichiers_crees:
             if f_cree.exists():
                 try:
@@ -119,10 +134,13 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
 
 def supprimer_fichiers_sources(fichiers: list[dict]):
     """Supprime les fichiers sources originaux après confirmation de l'utilisateur."""
+    logger.info(f"--- DÉMARRAGE DE LA SUPPRESSION DE {len(fichiers)} FICHIERS SOURCES ---")
     for f in fichiers:
         src = f["chemin_complet"]
         if src.exists():
             try:
                 src.unlink()
+                logger.info(f"SUPPRIMÉ - Source : {src}")
             except Exception as e:
+                logger.error(f"Erreur lors de la suppression de {src} : {e}")
                 print(f"Erreur lors de la suppression de {src} : {e}")

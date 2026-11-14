@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 from datetime import datetime
+from core.logger import get_logger
+
+logger = get_logger()
 
 try:
     from hachoir.parser import createParser
@@ -58,6 +61,7 @@ def calculer_chemin_cible_avec_doublons(dossier_destination: Path, fichier_sourc
         # Si le fichier existe, on vérifie si c'est strictement le même (taille identique)
         if fichiers_identiques(fichier_source, chemin_cible):
             est_doublon = True
+            logger.info(f"Doublon exact détecté : {fichier_source.name} (Taille: {fichier_source.stat().st_size} octets)")
             break
             
         # Si c'est un fichier différent (même minute de vol mais vidéo différente), on cherche un nouveau nom
@@ -74,6 +78,10 @@ def trouver_fichiers_dji(dossiers_sources: list[str], dossier_destination: str) 
     """
     fichiers_trouves = []
     chemin_dest = Path(dossier_destination)
+    
+    logger.info(f"--- DÉMARRAGE D'UN NOUVEAU SCAN ---")
+    logger.info(f"Dossiers sources : {dossiers_sources}")
+    logger.info(f"Dossier destination : {dossier_destination}")
     
     for dossier_source in dossiers_sources:
         chemin_dossier = Path(dossier_source)
@@ -101,4 +109,5 @@ def trouver_fichiers_dji(dossiers_sources: list[str], dossier_destination: str) 
                         "taille_go": chemin_fichier.stat().st_size / (1024 ** 3)  # On garde la précision totale dans le dictionnaire
                     })
                     
+    logger.info(f"Fin du scan : {len(fichiers_trouves)} fichiers DJI identifiés.")
     return fichiers_trouves
