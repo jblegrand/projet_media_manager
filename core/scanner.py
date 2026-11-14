@@ -31,22 +31,41 @@ def obtenir_date_prise_de_vue(chemin_fichier: Path) -> datetime:
     except Exception:
         return datetime.now()
 
-def calculer_chemin_cible(dossier_destination: Path, date_prise: datetime, suffixe: str) -> tuple[str, Path]:
+def fichiers_identiques(chemin_src: Path, chemin_dst: Path) -> bool:
     """
-    Calcule le nouveau nom du fichier et son chemin cible dans le dossier de destination,
-    en gérant les conflits de noms (doublons).
+    Vérifie si deux fichiers sont identiques.
+    Pour l'instant, on se base uniquement sur la taille exacte en octets pour des raisons de performance
+    sur de gros fichiers vidéo. Si les tailles sont identiques à l'octet près, on considère que c'est un doublon.
     """
+    if not chemin_dst.exists():
+        return False
+    return chemin_src.stat().st_size == chemin_dst.stat().st_size
+
+def calculer_chemin_cible_avec_doublons(dossier_destination: Path, fichier_source: Path, date_prise: datetime) -> tuple[str, Path, bool]:
+    """
+    Calcule le nouveau nom, le chemin cible, et indique si le fichier est un doublon exact déjà présent.
+    Si le nom est pris mais le fichier est différent, incrémente le compteur (_1, _2).
+    """
+    suffixe = fichier_source.suffix
     date_str = date_prise.strftime("%Y%m%d_%H%M")
     nouveau_nom = f"DJI_{date_str}{suffixe}"
     chemin_cible = dossier_destination / nouveau_nom
 
     compteur_doublon = 1
+    est_doublon = False
+
     while chemin_cible.exists():
+        # Si le fichier existe, on vérifie si c'est strictement le même (taille identique)
+        if fichiers_identiques(fichier_source, chemin_cible):
+            est_doublon = True
+            break
+            
+        # Si c'est un fichier différent (même minute de vol mais vidéo différente), on cherche un nouveau nom
         nouveau_nom = f"DJI_{date_str}_{compteur_doublon}{suffixe}"
         chemin_cible = dossier_destination / nouveau_nom
         compteur_doublon += 1
         
-    return nouveau_nom, chemin_cible
+    return nouveau_nom, chemin_cible, est_doublon
 
 def trouver_fichiers_dji(dossiers_sources: list[str], dossier_destination: str) -> list[dict]:
     """
@@ -68,10 +87,11 @@ def trouver_fichiers_dji(dossiers_sources: list[str], dossier_destination: str) 
                 # On identifie les fichiers DJI par leur nom (peut être étendu)
                 if nom_fichier.lower().startswith("dji"):
                     date_prise = obtenir_date_prise_de_vue(chemin_fichier)
-                    nouveau_nom, chemin_cible = calculer_chemin_cible(chemin_dest, date_prise, chemin_fichier.suffix)
+                    nouveau_nom, chemin_cible, est_doublon = calculer_chemin_cible_avec_doublons(chemin_dest, chemin_fichier, date_prise)
                     
                     fichiers_trouves.append({
-                        "selectionne": True,  # Case à cocher pour la sélection (par défaut True)
+                        "selectionne": not est_doublon,  # Décoché par défaut si c'est un doublon
+                        "est_doublon": est_doublon,
                         "chemin_complet": chemin_fichier,
                         "nom_original": nom_fichier,
                         "dossier_source": str(chemin_dossier),

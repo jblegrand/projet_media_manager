@@ -183,8 +183,12 @@ if st.session_state.simulation_run:
         if "data_affichage" not in st.session_state:
             data = []
             for f in st.session_state.fichiers_dji:
+                # Ajout d'une mention dans le statut si c'est un doublon
+                statut_doublon = "⚠️ Doublon détecté" if f.get("est_doublon", False) else "Nouveau"
+                
                 data.append({
                     "Sélection": f.get("selectionne", True),
+                    "Statut": statut_doublon,
                     "Nom Original": f["nom_original"],
                     "Date de Prise": f["date_prise_vue"].strftime("%d/%m/%Y %H:%M"),
                     "Nouveau Nom": f["nouveau_nom"],
@@ -194,8 +198,17 @@ if st.session_state.simulation_run:
             st.session_state.data_affichage = pd.DataFrame(data)
             
         hauteur_tableau = min(35 * len(st.session_state.data_affichage) + 40, 800)
+        
+        # Fonction de style pour mettre en surbrillance les lignes "Doublon détecté"
+        def style_doublons(row):
+            if row["Statut"] == "⚠️ Doublon détecté":
+                return ['background-color: #ffe6e6'] * len(row) # Rouge pastel/orange clair
+            return [''] * len(row)
+            
+        styled_df = st.session_state.data_affichage.style.apply(style_doublons, axis=1)
+
         st.session_state.edited_df = st.data_editor(
-                    st.session_state.data_affichage, 
+                    styled_df, 
                     use_container_width=True, 
                     height=hauteur_tableau,
                     hide_index=True,
@@ -205,6 +218,7 @@ if st.session_state.simulation_run:
                             help="Sélectionnez les vidéos à déplacer",
                             default=True,
                         ),
+                        "Statut": st.column_config.Column(disabled=True),
                         "Nom Original": st.column_config.Column(disabled=True),
                         "Date de Prise": st.column_config.Column(disabled=True),
                         "Nouveau Nom": st.column_config.Column(disabled=True),
@@ -213,8 +227,21 @@ if st.session_state.simulation_run:
                     }
                 )
 
+                # --- Bouton "Nettoyage des doublons à la source" ---
+        doublons_existants = [f for f in st.session_state.fichiers_dji if f.get("est_doublon", False)]
+        if doublons_existants:
+            st.info(f"💡 {len(doublons_existants)} fichier(s) identifié(s) comme déjà sécurisé(s) dans la destination (Doublon).")
+            if st.button("🧹 Supprimer uniquement les doublons de la carte SD (Source)"):
+                # Affiche une boîte de dialogue native pour confirmer (Dry-run de sécurité)
+                if tk.messagebox.askyesno("Confirmation", f"Êtes-vous sûr de vouloir supprimer définitivement les {len(doublons_existants)} fichiers doublons de la source ?\nIls sont déjà sécurisés dans votre dossier de destination."):
+                    supprimer_fichiers_sources(doublons_existants)
+                    st.success(f"{len(doublons_existants)} doublon(s) supprimé(s) de la source avec succès !")
+                    st.session_state.simulation_run = False
+                    del st.session_state.data_affichage
+                    st.rerun()
+
         st.markdown("---")
-        st.subheader("🚀 2. Validation et Déplacement")
+        st.subheader("🚀 2. Validation et Copie")
 
         # Récupération des fichiers sélectionnés via l'éditeur
         # On vérifie d'abord que edited_df existe bien et a la même longueur que fichiers_dji

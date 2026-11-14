@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 from pathlib import Path
 
 def format_size(bytes_size):
@@ -12,36 +13,48 @@ def format_size(bytes_size):
 
 def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=None):
     """
-    Déplace des fichiers de manière sécurisée en 3 étapes :
-    1. Copie du fichier par blocs (avec calcul de l'empreinte SHA-256 à la volée).
-    2. Vérification de l'empreinte SHA-256 du fichier cible.
-    3. Si les empreintes correspondent, suppression du fichier source d'origine.
-    
-    Cette méthode évite le chargement en RAM et permet d'annuler/suivre la progression.
+    Déplace des fichiers de manière hautement sécurisée :
+    1. Pre-flight check : Vérification de l'espace disque disponible.
+    2. Fichier temporaire (.part) : Évite de laisser un fichier corrompu en cas de coupure de courant.
+    3. Copie par blocs et calcul SHA-256 à la volée.
+    4. Validation du hash et renommage atomique du fichier.
     """
     total_bytes_global = sum(f["chemin_complet"].stat().st_size for f in fichiers_a_copier)
     bytes_traites_total = 0
     fichiers_crees = []
     
+    # --- 1. PRE-FLIGHT CHECK : Vérification de l'espace disque ---
+    if fichiers_a_copier:
+        premier_dossier_cible = Path(fichiers_a_copier[0]["chemin_cible"]).parent
+        premier_dossier_cible.mkdir(parents=True, exist_ok=True)
+        _, _, free_space = shutil.disk_usage(premier_dossier_cible)
+        
+        # Marge de sécurité de 5% pour éviter de saturer le disque à l'octet près
+        espace_requis = total_bytes_global * 1.05 
+        if free_space < espace_requis:
+            raise ValueError(f"Espace disque insuffisant sur la destination. Requis: {format_size(espace_requis)}, Libre: {format_size(free_space)}.")
+
     try:
         for f in fichiers_a_copier:
             src = f["chemin_complet"]
             dst = Path(f["chemin_cible"])
             
-            # Création du dossier parent de la destination si nécessaire
+            # Utilisation d'un fichier temporaire pendant le transfert
+            dst_tmp = dst.with_name(dst.name + ".part")
+            
             dst.parent.mkdir(parents=True, exist_ok=True)
             
             total_bytes_fichier = src.stat().st_size
             bytes_copiés_fichier = 0
             
-            # On mémorise le fichier cible pour pouvoir le nettoyer si l'utilisateur annule
-            fichiers_crees.append(dst)
+            # On trace le fichier temporaire pour le nettoyage en cas d'erreur
+            fichiers_crees.append(dst_tmp)
             
-            # 1. Copie par blocs avec calcul du hash source à la volée
+            # --- 2. Copie par blocs (RAM safe) vers fichier temporaire ---
             hasher_src = hashlib.sha256()
-            with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+            with open(src, 'rb') as fsrc, open(dst_tmp, 'wb') as fdst:
                 while True:
-                    buf = fsrc.read(1024 * 1024 * 10) # Traitement par blocs de 10 Mo
+                    buf = fsrc.read(1024 * 1024 * 10) # 10 Mo
                     if not buf:
                         break
                     
@@ -63,7 +76,7 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
             
             hash_source = hasher_src.hexdigest()
             
-            # 2. Vérification du hash cible en relisant le fichier de destination
+            # --- 3. Vérification du hash cible sur le fichier temporaire ---
             if update_callback:
                 update_callback(
                     src.name, 
@@ -75,7 +88,7 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
                 )
                 
             hasher_dst = hashlib.sha256()
-            with open(dst, 'rb') as fdst:
+            with open(dst_tmp, 'rb') as fdst:
                 while True:
                     buf = fdst.read(1024 * 1024 * 10)
                     if not buf:
@@ -83,13 +96,19 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
                     hasher_dst.update(buf)
             hash_cible = hasher_dst.hexdigest()
             
-            # 3. Validation
+            # --- 4. Validation et Renommage (Opération Atomique) ---
             if hash_source != hash_cible:
-                raise ValueError(f"Erreur d'intégrité critique pour {src.name}. Annulation du processus.")
+                raise ValueError(f"Erreur d'intégrité critique pour {src.name}. Corruption pendant le transport.")
+            
+            # Le fichier est 100% valide, on le renomme de .part vers .mp4
+            # Cette opération est quasi-instantanée (renommage dans l'index du système de fichiers)
+            dst_tmp.rename(dst)
+            # On remplace la trace pour que le système ne supprime pas le bon fichier si une erreur arrive sur la boucle suivante
+            fichiers_crees.remove(dst_tmp) 
                 
     except BaseException as e:
-        # Streamlit lève une exception lorsqu'on clique sur "Annuler" (pour forcer le rechargement).
-        # On l'intercepte ici (ainsi que toute autre erreur) pour nettoyer les fichiers à moitié copiés.
+        # En cas de crash (Arrachage SD, Erreur Streamlit, Bouton Annuler)
+        # On supprime les fichiers ".part" incomplets qui traînent
         for f_cree in fichiers_crees:
             if f_cree.exists():
                 try:
