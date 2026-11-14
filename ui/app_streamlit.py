@@ -9,6 +9,9 @@ import pandas as pd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.scanner import trouver_fichiers_dji
 from core.copier import deplacer_fichiers_securise, format_size, supprimer_fichiers_sources
+from core.logger import get_logger
+
+logger = get_logger()
 
 def select_folder(title):
     """Ouvre une boîte de dialogue Windows pour sélectionner un dossier"""
@@ -234,6 +237,7 @@ if st.session_state.simulation_run:
             if st.button("🧹 Supprimer uniquement les doublons de la carte SD (Source)"):
                 # Affiche une boîte de dialogue native pour confirmer (Dry-run de sécurité)
                 if tk.messagebox.askyesno("Confirmation", f"Êtes-vous sûr de vouloir supprimer définitivement les {len(doublons_existants)} fichiers doublons de la source ?\nIls sont déjà sécurisés dans votre dossier de destination."):
+                    logger.info("Utilisateur a confirmé la suppression des doublons à la source.")
                     supprimer_fichiers_sources(doublons_existants)
                     st.success(f"{len(doublons_existants)} doublon(s) supprimé(s) de la source avec succès !")
                     st.session_state.simulation_run = False
@@ -263,12 +267,14 @@ if st.session_state.simulation_run:
                 with col1:
                     # Le bouton déclenche l'affichage de l'interface de copie
                     if st.button("✅ Valider et Copier", type="primary", use_container_width=True):
+                        logger.info("Utilisateur a cliqué sur 'Valider et Copier'.")
                         st.session_state.processus_en_cours = True
                 
                 with col2:
                     # Bouton permettant d'annuler (et donc nettoyer)
                     if st.session_state.get("processus_en_cours", False):
                         if st.button("🛑 Annuler et tout effacer", type="secondary", use_container_width=True):
+                            logger.info("Utilisateur a cliqué sur 'Annuler et tout effacer'.")
                             st.session_state.processus_en_cours = False
                             st.rerun()
 
@@ -314,6 +320,7 @@ if st.session_state.simulation_run:
                 
                 with col_sup1:
                     if st.button("🗑️ Supprimer les sources originales", type="primary", use_container_width=True):
+                        logger.info("Utilisateur a demandé la suppression des sources originales post-copie.")
                         supprimer_fichiers_sources(fichiers_a_deplacer)
                         st.session_state.simulation_run = False
                         st.session_state.copie_terminee = False
@@ -323,6 +330,7 @@ if st.session_state.simulation_run:
                         
                 with col_sup2:
                     if st.button("🏠 Conserver les sources et retourner à l'accueil", use_container_width=True):
+                        logger.info("Utilisateur a choisi de conserver les sources (Retour accueil).")
                         st.session_state.simulation_run = False
                         st.session_state.copie_terminee = False
                         del st.session_state.data_affichage
