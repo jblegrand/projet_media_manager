@@ -153,12 +153,12 @@ if st.session_state.simulation_run:
                 # --- Boutons pour tout sélectionner / désélectionner ---
         col_sel1, col_sel2, _ = st.columns([2, 2, 6])
         with col_sel1:
-            if st.button("☑️ Tout sélectionner", use_container_width=True):
+            if st.button("☑️ Tout sélectionner", width='stretch'):
                 if "data_affichage" in st.session_state:
                     st.session_state.data_affichage["Sélection"] = True
                     st.rerun()
         with col_sel2:
-            if st.button("🔲 Tout désélectionner", use_container_width=True):
+            if st.button("🔲 Tout désélectionner", width='stretch'):
                 if "data_affichage" in st.session_state:
                     st.session_state.data_affichage["Sélection"] = False
                     st.rerun()
@@ -220,7 +220,7 @@ if st.session_state.simulation_run:
 
         st.session_state.edited_df = st.data_editor(
                     styled_df, 
-                    use_container_width=True, 
+                    width='stretch',
                     height=hauteur_tableau,
                     hide_index=True,
                     column_config={
@@ -275,14 +275,14 @@ if st.session_state.simulation_run:
                 col1, col2 = st.columns([2, 8])
                 with col1:
                     # Le bouton déclenche l'affichage de l'interface de copie
-                    if st.button("✅ Valider et Copier", type="primary", use_container_width=True):
+                    if st.button("✅ Valider et Copier", type="primary", width='stretch'):
                         logger.info("Utilisateur a cliqué sur 'Valider et Copier'.")
                         st.session_state.processus_en_cours = True
                 
                 with col2:
                     # Bouton permettant d'annuler (et donc nettoyer)
                     if st.session_state.get("processus_en_cours", False):
-                        if st.button("🛑 Annuler et tout effacer", type="secondary", use_container_width=True):
+                        if st.button("🛑 Annuler et tout effacer", type="secondary", width='stretch'):
                             logger.info("Utilisateur a cliqué sur 'Annuler et tout effacer'.")
                             st.session_state.processus_en_cours = False
                             st.rerun()
@@ -339,7 +339,7 @@ if st.session_state.simulation_run:
                 col_sup1, col_sup2 = st.columns([1, 1])
                 
                 with col_sup1:
-                    if st.button("🗑️ Supprimer les sources originales", type="primary", use_container_width=True):
+                    if st.button("🗑️ Supprimer les sources originales", type="primary", width='stretch'):
                         logger.info("Utilisateur a demandé la suppression des sources originales post-copie.")
                         supprimer_fichiers_sources(fichiers_a_deplacer)
                         st.session_state.simulation_run = False
@@ -349,7 +349,7 @@ if st.session_state.simulation_run:
                         st.rerun()
                         
                 with col_sup2:
-                    if st.button("🏠 Conserver les sources et retourner à l'accueil", use_container_width=True):
+                    if st.button("🏠 Conserver les sources et retourner à l'accueil", width='stretch'):
                         logger.info("Utilisateur a choisi de conserver les sources (Retour accueil).")
                         st.session_state.simulation_run = False
                         st.session_state.copie_terminee = False

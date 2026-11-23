@@ -1,4 +1,4 @@
-import os
+import re
 from pathlib import Path
 from datetime import datetime
 from core.logger import get_logger
@@ -9,9 +9,12 @@ try:
     from hachoir.parser import createParser
     from hachoir.metadata import extractMetadata
     HACHOIR_DISPONIBLE = True
+    # Force Hachoir à être silencieux pour éviter de polluer la console avec des erreurs EXIF mineures
+    import hachoir.core.config
+    hachoir.core.config.quiet = True
 except ImportError:
     HACHOIR_DISPONIBLE = False
-
+        
 try:
     import exifread
     EXIFREAD_DISPONIBLE = True
@@ -19,7 +22,7 @@ except ImportError:
     EXIFREAD_DISPONIBLE = False
 
 EXTENSIONS_VIDEO = {
-    ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", ".m4v", 
+    ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", ".m4v",
     ".mpg", ".mpeg", ".3gp", ".mts", ".m2ts"
 }
 
@@ -34,8 +37,7 @@ def obtenir_date_prise_de_vue(chemin_fichier: Path) -> datetime:
         # On capture les logs d'erreurs de hachoir pour éviter de polluer la console Streamlit
         import hachoir.core.config
         hachoir.core.config.quiet = True
-        
-        try:
+    try:
             parser = createParser(str(chemin_fichier))
             if parser:
                 metadata = extractMetadata(parser)
@@ -43,9 +45,9 @@ def obtenir_date_prise_de_vue(chemin_fichier: Path) -> datetime:
                     date_creation = metadata.get('creation_date')
                     if date_creation:
                         return date_creation
-        except Exception:
+    except Exception:
             pass
-    
+
     try:
         timestamp = chemin_fichier.stat().st_mtime
         return datetime.fromtimestamp(timestamp)
@@ -88,7 +90,7 @@ def identifier_categorie_media(nom_fichier: str, est_video: bool, est_raw: bool,
     Différencie le traitement s'il s'agit d'une vidéo ou d'une photo.
     """
     nom_min = nom_fichier.lower()
-    
+
     # 1. Traitement des VIDÉOS
     if est_video:
         if nom_min.startswith("dji"):
@@ -104,13 +106,14 @@ def identifier_categorie_media(nom_fichier: str, est_video: bool, est_raw: bool,
             return {"dossier_base": "Vidéos/Camera Chasse", "prefixe": "CHASSE", "renommer": True, "classer_par_date": False}
         elif nom_min.startswith(("vid_", "pxl_", "img_")):
             return {"dossier_base": "Vidéos/Téléphone", "prefixe": "PHONE", "renommer": True, "classer_par_date": False}
-        else:
+
+        # Fallback : Vidéo non reconnue par ses préfixes
             return {"dossier_base": "Vidéos/Montage", "prefixe": "", "renommer": False, "classer_par_date": False}
-            
+
     # 2. Traitement des PHOTOS (JPG, PNG, etc. et RAW)
     else:
         dossier_racine = "Images/RAW" if est_raw else "Images/JPG"
-        
+
         if nom_min.startswith("dji"):
             return {"dossier_base": dossier_racine, "prefixe": "DJI", "renommer": True, "classer_par_date": True}
         elif nom_min.startswith(("gopr", "gh", "gx")):
@@ -148,10 +151,10 @@ def calculer_chemin_cible_avec_doublons(dossier_destination_base: Path, fichier_
         dossier_cible = dossier_destination_base / categorie["dossier_base"] / annee / mois
     else:
         dossier_cible = dossier_destination_base / categorie["dossier_base"]
-        
+
         # Création virtuelle du dossier cible (sera réellement créé lors de la copie)
     suffixe = fichier_source.suffix
-    
+
     if categorie["renommer"]:
         date_str = date_prise.strftime("%Y%m%d_%H%M")
         nouveau_nom_base = f"{categorie['prefixe']}_{date_str}"
@@ -172,7 +175,7 @@ def calculer_chemin_cible_avec_doublons(dossier_destination_base: Path, fichier_
             est_doublon = True
             logger.info(f"Doublon exact détecté sur disque : {fichier_source.name} (Taille: {fichier_source.stat().st_size} octets)")
             break
-            
+
         # Si c'est un fichier différent (même minute), on ajoute d'abord les secondes si on renomme
         if categorie["renommer"] and not a_ajoute_secondes:
             date_str_avec_sec = date_prise.strftime("%Y%m%d_%H%M%S")
@@ -180,17 +183,16 @@ def calculer_chemin_cible_avec_doublons(dossier_destination_base: Path, fichier_
             a_ajoute_secondes = True
             logger.debug(f"Conflit de nom minute pour {fichier_source.name}, ajout des secondes : {nouveau_nom_base}")
         else:
-                        # Si les secondes sont déjà ajoutées et qu'il y a ENCORE conflit (rafale photo par ex), on ajoute _1, _2
+            # Si les secondes sont déjà ajoutées et qu'il y a ENCORE conflit (rafale photo par ex), on ajoute _1, _2
             # On cherche s'il y a un "_" suivi d'un ou deux chiffres à la toute fin de la chaîne pour l'isoler proprement
-            import re
             nouveau_nom_base = re.sub(r'_\d+$', '', nouveau_nom_base)
             nouveau_nom_base = f"{nouveau_nom_base}_{compteur_doublon}"
             compteur_doublon += 1
             logger.debug(f"Conflit de nom seconde pour {fichier_source.name}, ajout d'un index : {nouveau_nom_base}")
-            
+
         nouveau_nom = f"{nouveau_nom_base}{suffixe}"
         chemin_cible = dossier_cible / nouveau_nom
-        
+
     return nouveau_nom, chemin_cible, est_doublon
 
 def trouver_fichiers_medias(dossiers_sources: list[str], dossier_destination: str) -> list[dict]:
@@ -200,54 +202,54 @@ def trouver_fichiers_medias(dossiers_sources: list[str], dossier_destination: st
     """
     fichiers_trouves = []
     chemin_dest = Path(dossier_destination)
-    
+
     logger.info(f"--- DÉMARRAGE D'UN NOUVEAU SCAN ---")
     logger.info(f"Dossiers sources : {dossiers_sources}")
     logger.info(f"Dossier destination : {dossier_destination}")
-    
+
     # Dictionnaire temporaire (en mémoire) pour tracker les futurs chemins cibles calculés
     # durant ce scan précis. Clé : chemin_cible string, Valeur : info du fichier original
     chemins_cibles_alloues_ce_scan = {}
-    
+
     for dossier_source in dossiers_sources:
         chemin_dossier = Path(dossier_source)
         if not chemin_dossier.exists() or not chemin_dossier.is_dir():
             continue
-            
+
         for chemin_fichier in chemin_dossier.rglob("*"):
             if not chemin_fichier.is_file():
                 continue
-                
+
             ext = chemin_fichier.suffix.lower()
             est_video = ext in EXTENSIONS_VIDEO
             est_photo = ext in EXTENSIONS_PHOTO
-            
+
             # On détermine si la photo est un fichier RAW pour le classement spécifique
             est_raw = ext in {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2"}
-            
+
             if est_video or est_photo:
                 nom_fichier = chemin_fichier.name
-                
+
                 # On identifie la catégorie du média
                 categorie = identifier_categorie_media(nom_fichier, est_video, est_raw, chemin_fichier)
-                
+
                 date_prise = obtenir_date_prise_de_vue(chemin_fichier)
-                
+
                                 # Calcul initial du chemin
                 nouveau_nom, chemin_cible, est_doublon = calculer_chemin_cible_avec_doublons(chemin_dest, chemin_fichier, date_prise, categorie)
-                
+
                                 # --- ANTI-COLLISION EN MÉMOIRE (INTRA-SCAN) ---
                 if not est_doublon:
                     a_ajoute_secondes_mem = False
                     compteur_memoire = 1
-                    
+
                     while str(chemin_cible) in chemins_cibles_alloues_ce_scan:
                         autre_fichier = chemins_cibles_alloues_ce_scan[str(chemin_cible)]
                         if fichiers_identiques(chemin_fichier, autre_fichier):
                             est_doublon = True
                             logger.info(f"Doublon exact détecté en mémoire (intra-scan) : {chemin_fichier.name}")
                             break
-                            
+                
                         # Résolution de la collision en mémoire : on essaie d'ajouter les secondes d'abord
                         if categorie["renommer"] and not a_ajoute_secondes_mem:
                             date_str_avec_sec = date_prise.strftime("%Y%m%d_%H%M%S")
@@ -258,21 +260,20 @@ def trouver_fichiers_medias(dossiers_sources: list[str], dossier_destination: st
                             # Si on a déjà mis les secondes (rafale) ou qu'on ne renomme pas, on ajoute _1
                             # On se base sur le nom actuel (celui calculé avec secondes potentiellement)
                             # On retire le suffixe incrémental s'il y en a déjà un
-                            import re
                             # On utilise le nom de base en mémoire courant (qui a déjà les secondes)
                             nom_actuel_sans_ext = nouveau_nom.rsplit('.', 1)[0]
                             nom_sans_compteur = re.sub(r'_\d+$', '', nom_actuel_sans_ext)
-                            
+
                             nouveau_nom_base_mem = f"{nom_sans_compteur}_{compteur_memoire}"
                             compteur_memoire += 1
                             logger.debug(f"Collision mémoire (seconde) pour {chemin_fichier.name}, ajout index : {nouveau_nom_base_mem}")
-                            
+
                         nouveau_nom = f"{nouveau_nom_base_mem}{chemin_fichier.suffix}"
                         chemin_cible = chemin_cible.parent / nouveau_nom
 
                 if not est_doublon:
                     chemins_cibles_alloues_ce_scan[str(chemin_cible)] = chemin_fichier
-                
+
                 # Formatage de la catégorie pour l'affichage (ex: "Images/RAW/2023/11")
                 categorie_affichage = categorie["dossier_base"]
                 if categorie.get("classer_par_date"):
@@ -294,3 +295,4 @@ def trouver_fichiers_medias(dossiers_sources: list[str], dossier_destination: st
                     
     logger.info(f"Fin du scan : {len(fichiers_trouves)} médias identifiés.")
     return fichiers_trouves
+
