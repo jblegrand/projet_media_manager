@@ -128,8 +128,8 @@ def deplacer_fichiers_securise(fichiers_a_copier: list[dict], update_callback=No
             if f_cree.exists():
                 try:
                     f_cree.unlink()
-                except Exception:
-                    pass
+                except Exception as ex_nettoyage:
+                    logger.error(f"Impossible de nettoyer le fichier temporaire {f_cree} : {ex_nettoyage}")
         raise e
 
 def supprimer_fichiers_sources(fichiers: list[dict]):

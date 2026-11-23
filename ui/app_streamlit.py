@@ -7,7 +7,7 @@ import pandas as pd
 
 # Ajout du dossier racine au PATH pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from core.scanner import trouver_fichiers_dji
+from core.scanner import trouver_fichiers_medias
 from core.copier import deplacer_fichiers_securise, format_size, supprimer_fichiers_sources
 from core.logger import get_logger
 
@@ -46,12 +46,10 @@ st.write("Bienvenue dans votre interface de tri modulaire.")
 # --- Initialisation de l'état de session ---
 if "sources_list" not in st.session_state:
     st.session_state.sources_list = []
-if "dest_list" not in st.session_state:
-    st.session_state.dest_list = []  # Limité à un seul élément
 if "simulation_run" not in st.session_state:
     st.session_state.simulation_run = False
-if "fichiers_dji" not in st.session_state:
-    st.session_state.fichiers_dji = []
+if "fichiers_medias" not in st.session_state:
+    st.session_state.fichiers_medias = []
 
 st.header("1. Paramètres de saisie")
 
@@ -62,10 +60,9 @@ if st.button("➕ Ajouter un dossier source", key="btn_add_src"):
     chosen_dir = select_folder("Sélectionner un dossier source")
     if chosen_dir:
         norm_chosen = os.path.normpath(chosen_dir)
-        # Vérification si le dossier est déjà la destination
-        is_dest = any(os.path.normpath(d) == norm_chosen for d in st.session_state.dest_list)
-        if is_dest:
-            st.error("Ce dossier ne peut pas être une source car il est déjà défini comme destination.")
+        # Vérification si le dossier est sur le disque D: (notre destination globale)
+        if norm_chosen.upper().startswith("D:\\"):
+            st.error("Ce dossier ne peut pas être une source car il est situé sur le disque de destination global (D:\\).")
         elif norm_chosen not in [os.path.normpath(s) for s in st.session_state.sources_list]:
             st.session_state.sources_list.append(chosen_dir)
             st.rerun()
@@ -85,77 +82,63 @@ else:
 
 st.markdown("---")
 
-# --- Dossier de Destination (Unique, même ergonomie avec bouton grisé) ---
-st.subheader("Dossier de Destination (Cible unique)")
-
-# Le bouton est désactivé s'il y a déjà un dossier de destination
-has_dest = len(st.session_state.dest_list) > 0
-
-if st.button("➕ Ajouter un dossier destination", key="btn_add_dest", disabled=has_dest):
-    chosen_dir = select_folder("Sélectionner le dossier de destination")
-    if chosen_dir:
-        norm_chosen = os.path.normpath(chosen_dir)
-        # Vérification si le dossier est déjà dans les sources
-        is_source = any(os.path.normpath(s) == norm_chosen for s in st.session_state.sources_list)
-        if is_source:
-            st.error("Le dossier de destination ne peut pas être l'un des dossiers sources.")
-        else:
-            st.session_state.dest_list = [chosen_dir]
-            st.rerun()
-
-# Affichage de la destination sélectionnée avec option de suppression
-if st.session_state.dest_list:
-    for idx, dst in enumerate(st.session_state.dest_list):
-        cols = st.columns([6, 1])
-        with cols[0]:
-            st.text(f"📁 {dst}")
-        with cols[1]:
-            if st.button("❌", key=f"del_dest_{idx}"):
-                st.session_state.dest_list.pop(idx)
-                st.rerun()
-else:
-    st.info("Aucun dossier de destination sélectionné pour le moment.")
-
-st.markdown("---")
-
 # --- Bouton de simulation ---
 if st.button("Lancer la simulation (Dry-Run)", type="primary"):
     if not st.session_state.sources_list:
         st.warning("Veuillez renseigner au moins un dossier source.")
-    elif not st.session_state.dest_list:
-        st.warning("Veuillez renseigner le dossier de destination.")
     else:
-        dest = st.session_state.dest_list[0]
-        norm_dest = os.path.normpath(dest)
-        conflict = any(os.path.normpath(s) == norm_dest for s in st.session_state.sources_list)
+        # La destination de base est désormais fixée en dur à D:
+        dest_base = "D:\\"
+        norm_dest_base = os.path.normpath(dest_base)
+        
+        # On vérifie qu'on n'essaie pas de scanner D:\ entier pour copier dans D:\, ce qui créerait une boucle infinie
+        conflict = False
+        for s in st.session_state.sources_list:
+            if os.path.normpath(s) == norm_dest_base or os.path.normpath(s).startswith(norm_dest_base + os.sep):
+                conflict = True
+                break
         
         if conflict:
-            st.error("❌ Erreur : Le dossier de destination ne peut pas être identique à l'un des dossiers sources.")
+            st.error("❌ Erreur : Vous ne pouvez pas définir une source située sur le disque de destination (D:\\) pour éviter les conflits de copie.")
         else:
-            with st.spinner("⏳ Traitement en cours... Veuillez patienter pendant la recherche et le calcul des nouveaux noms."):
+            with st.spinner("⏳ Traitement en cours... Veuillez patienter pendant la recherche et le tri des médias."):
                 # On stocke le résultat dans la session pour qu'il persiste après un rerun
-                st.session_state.fichiers_dji = trouver_fichiers_dji(st.session_state.sources_list, dest)
+                st.session_state.fichiers_medias = trouver_fichiers_medias(st.session_state.sources_list, dest_base)
                 st.session_state.simulation_run = True
 
 # --- Affichage des résultats si la simulation a été lancée ---
 if st.session_state.simulation_run:
-    dest = st.session_state.dest_list[0]
+    dest_base = "D:\\"
     
     st.success("Simulation lancée avec succès !")
     st.write(f"**Sources à analyser ({len(st.session_state.sources_list)}) :**")
     for s in st.session_state.sources_list:
         st.write(f"- {s}")
-    st.write(f"**Destination :** {dest}")
+    st.write(f"**Disque Destination (Root) :** {dest_base}")
     
     st.markdown("---")
     st.subheader("🔍 Analyse des fichiers en cours...")
     
-    if not st.session_state.fichiers_dji:
-        st.info("Aucun fichier vidéo DJI (.mp4, .mov) trouvé dans les dossiers sources.")
+        # Injection d'un petit script Javascript pour faire scroller automatiquement la page
+    # jusqu'à cette section une fois l'analyse terminée.
+    # On utilise st.html (nouveau composant Streamlit) au lieu de st.components.v1.html/iframe qui sont dépréciés
+    st.html(
+        """
+        <script>
+            // Un délai pour s'assurer que Streamlit a fini de dessiner les éléments
+            setTimeout(function() {
+                window.parent.document.querySelector('h3').scrollIntoView({behavior: 'smooth'});
+            }, 500);
+        </script>
+        """
+    )
+    
+    if not st.session_state.fichiers_medias:
+        st.info("Aucun fichier média (photo ou vidéo) trouvé dans les dossiers sources.")
     else:
-                # Calcul de la taille directement depuis le chemin du fichier
+        # Calcul de la taille directement depuis le chemin du fichier
         # On vérifie d'abord que le fichier source existe toujours (cas où on annule après une copie réussie)
-        fichiers_existants = [f for f in st.session_state.fichiers_dji if f["chemin_complet"].exists()]
+        fichiers_existants = [f for f in st.session_state.fichiers_medias if f["chemin_complet"].exists()]
         
         taille_totale_go = round(sum(f["chemin_complet"].stat().st_size / (1024 ** 3) for f in fichiers_existants), 2)
         
@@ -165,7 +148,7 @@ if st.session_state.simulation_run:
         else:
             taille_affichage = str(taille_totale_go)
             
-        st.write(f"**{len(st.session_state.fichiers_dji)} fichiers DJI identifiés, soit {taille_affichage} Go de vidéo à déplacer.**")
+        st.write(f"**{len(st.session_state.fichiers_medias)} médias identifiés, soit {taille_affichage} Go à trier.**")
         
                 # --- Boutons pour tout sélectionner / désélectionner ---
         col_sel1, col_sel2, _ = st.columns([2, 2, 6])
@@ -185,26 +168,51 @@ if st.session_state.simulation_run:
         # En utilisant un dataframe Pandas pour que le composant data_editor l'interprète correctement et retourne un DataFrame
         if "data_affichage" not in st.session_state:
             data = []
-            for f in st.session_state.fichiers_dji:
+            for f in st.session_state.fichiers_medias:
                 # Ajout d'une mention dans le statut si c'est un doublon
-                statut_doublon = "⚠️ Doublon détecté" if f.get("est_doublon", False) else "Nouveau"
+                statut_doublon = "⚠️ Doublon" if f.get("est_doublon", False) else "Nouveau"
+                
+                # Formatage du dossier destination complet pour une meilleure visibilité
+                dossier_cible = f.get("categorie", "")
                 
                 data.append({
                     "Sélection": f.get("selectionne", True),
                     "Statut": statut_doublon,
+                    "Type": f["type"],
                     "Nom Original": f["nom_original"],
                     "Date de Prise": f["date_prise_vue"].strftime("%d/%m/%Y %H:%M"),
                     "Nouveau Nom": f["nouveau_nom"],
-                    "Dossier Cible": f["chemin_cible"],
-                    "Dossier Source": os.path.basename(f["dossier_source"])
+                    "Dossier Destination": dossier_cible
                 })
             st.session_state.data_affichage = pd.DataFrame(data)
             
-        hauteur_tableau = min(35 * len(st.session_state.data_affichage) + 40, 800)
+            # --- Tri automatique du tableau ---
+            # 1. Par Statut : "⚠️ Doublon" vient avant "Nouveau"
+            # 2. Par Type : Photo puis Vidéo
+            # 3. Par Dossier Destination
+            st.session_state.data_affichage = st.session_state.data_affichage.sort_values(by=["Statut", "Type", "Dossier Destination", "Date de Prise"], ascending=[False, True, True, True])
+            
+            # --- SYNCHRONISATION CRITIQUE ---
+            # Pour que les index de notre DataFrame trié correspondent aux index de la liste brute st.session_state.fichiers_medias
+            # que l'on va passer à la fonction de copie, il faut absolument trier cette liste source 
+            # dans le MEME ORDRE que le tableau d'affichage !
+            st.session_state.fichiers_medias.sort(
+                key=lambda f: (
+                    not f.get("est_doublon", False), # False (0) d'abord pour les doublons
+                    f["type"],
+                    f.get("categorie", ""),
+                    f["date_prise_vue"]
+                )
+            )
+            
+            st.session_state.data_affichage = st.session_state.data_affichage.reset_index(drop=True)
+            
+        # Hauteur calculée pour s'assurer qu'aucun ascenseur interne n'apparaisse.
+        hauteur_tableau = (35 * len(st.session_state.data_affichage)) + 40
         
         # Fonction de style pour mettre en surbrillance les lignes "Doublon détecté"
         def style_doublons(row):
-            if row["Statut"] == "⚠️ Doublon détecté":
+            if row["Statut"] == "⚠️ Doublon":
                 return ['background-color: #ffe6e6'] * len(row) # Rouge pastel/orange clair
             return [''] * len(row)
             
@@ -218,20 +226,21 @@ if st.session_state.simulation_run:
                     column_config={
                         "Sélection": st.column_config.CheckboxColumn(
                             "Sélection",
-                            help="Sélectionnez les vidéos à déplacer",
+                            help="Sélectionnez les médias à déplacer",
                             default=True,
+                            width="small"
                         ),
-                        "Statut": st.column_config.Column(disabled=True),
-                        "Nom Original": st.column_config.Column(disabled=True),
-                        "Date de Prise": st.column_config.Column(disabled=True),
-                        "Nouveau Nom": st.column_config.Column(disabled=True),
-                        "Dossier Cible": st.column_config.Column(disabled=True),
-                        "Dossier Source": st.column_config.Column(disabled=True)
+                        "Statut": st.column_config.Column(disabled=True, width="small"),
+                        "Type": st.column_config.Column(disabled=True, width="small"),
+                        "Nom Original": st.column_config.Column(disabled=True, width="medium"),
+                        "Date de Prise": st.column_config.Column(disabled=True, width="medium"),
+                        "Nouveau Nom": st.column_config.Column(disabled=True, width="medium"),
+                        "Dossier Destination": st.column_config.Column(disabled=True, width="large")
                     }
                 )
 
                 # --- Bouton "Nettoyage des doublons à la source" ---
-        doublons_existants = [f for f in st.session_state.fichiers_dji if f.get("est_doublon", False)]
+        doublons_existants = [f for f in st.session_state.fichiers_medias if f.get("est_doublon", False)]
         if doublons_existants:
             st.info(f"💡 {len(doublons_existants)} fichier(s) identifié(s) comme déjà sécurisé(s) dans la destination (Doublon).")
             if st.button("🧹 Supprimer uniquement les doublons de la carte SD (Source)"):
@@ -248,20 +257,20 @@ if st.session_state.simulation_run:
         st.subheader("🚀 2. Validation et Copie")
 
         # Récupération des fichiers sélectionnés via l'éditeur
-        # On vérifie d'abord que edited_df existe bien et a la même longueur que fichiers_dji
-        if "edited_df" in st.session_state and len(st.session_state.edited_df) == len(st.session_state.fichiers_dji):
+        # On vérifie d'abord que edited_df existe bien et a la même longueur que fichiers_medias
+        if "edited_df" in st.session_state and len(st.session_state.edited_df) == len(st.session_state.fichiers_medias):
             fichiers_a_deplacer = [
-                f for i, f in enumerate(st.session_state.fichiers_dji) 
+                f for i, f in enumerate(st.session_state.fichiers_medias) 
                 if st.session_state.edited_df.iloc[i]["Sélection"]
             ]
         else:
             # Sécurité fallback si l'éditeur n'a pas encore mis à jour l'état
-            fichiers_a_deplacer = [f for f in st.session_state.fichiers_dji if f.get("selectionne", True)]
+            fichiers_a_deplacer = [f for f in st.session_state.fichiers_medias if f.get("selectionne", True)]
 
         if not fichiers_a_deplacer:
             st.warning("Veuillez sélectionner au moins un fichier à déplacer dans le tableau ci-dessus.")
         else:
-            # Phase 2A : Interface de copie
+                        # Phase 2A : Interface de copie
             if not st.session_state.get("copie_terminee", False):
                 col1, col2 = st.columns([2, 8])
                 with col1:
@@ -279,6 +288,17 @@ if st.session_state.simulation_run:
                             st.rerun()
 
                 if st.session_state.get("processus_en_cours", False):
+                    st.html(
+                        """
+                        <script>
+                            // Fait descendre la page en bas au lancement de la copie
+                            setTimeout(function() {
+                                window.parent.document.documentElement.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+                            }, 100);
+                        </script>
+                        """
+                    )
+                    
                     st.info("⚠️ Ne fermez pas cette page. La copie est en cours...")
                     
                     progress_bar_globale = st.progress(0, text="Progression totale : 0 %")
